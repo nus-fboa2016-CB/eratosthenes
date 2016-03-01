@@ -291,9 +291,17 @@ class DefaultHandler
         return true;
     }
 
-    public function getRepoTreeStructure($owner, $repo, $branch, $requestedFolder)
+    /**
+     * Get a Github repo's tree structure
+     * @param $owner
+     * @param $repo
+     * @param $ref String could be a commit sha, a branch, or a tag
+     * @param $requestedFolder
+     * @return string
+     */
+    public function getRepoTreeStructure($owner, $repo, $ref, $requestedFolder)
     {
-        $currentUrl = "https://api.github.com/repos/$owner/$repo/git/trees/$branch";
+        $currentUrl = "https://api.github.com/repos/$owner/$repo/git/trees/$ref";
 
         $queryParams = "?recursive=1";
 
@@ -318,11 +326,19 @@ class DefaultHandler
         return json_encode(array('success' => true, 'files' => $fileStructure));
     }
 
-    public function getGithubRepoCode($owner, $repo, $branch, $path)
+    /**
+     * Get contents from the name of the commit/branch/tag
+     * @param $owner String
+     * @param $repo String
+     * @param $ref String The name of the commit/branch/tag
+     * @param $path String
+     * @return array
+     */
+    public function getGithubRepoCode($owner, $repo, $ref, $path)
     {
         $urlEncodedPath = implode('/', array_map('rawurlencode', explode('/', $path)));
         $url = "https://api.github.com/repos/$owner/$repo/contents/$urlEncodedPath";
-        $queryParams = "?ref=$branch";
+        $queryParams = "?ref=$ref";
 
         /*
          * See the docs here https://developer.github.com/v3/repos/contents/
@@ -352,7 +368,7 @@ class DefaultHandler
                 }
                 $libraryContents['contents'][] = $code['file'];
             } elseif ($element['type'] == 'dir') {
-                $directoryContents = $this->getGithubRepoCode($owner, $repo, $branch, $element['path']);
+                $directoryContents = $this->getGithubRepoCode($owner, $repo, $ref, $element['path']);
                 if ($directoryContents['success'] !== true) {
                     return $directoryContents;
                 }
@@ -707,6 +723,39 @@ class DefaultHandler
         }
 
         return array('success' => true, 'headRefs' => $headRefs);
+    }
+
+    /**
+     * Fetch all releases from the Github repo
+     * @param $owner String
+     * @param $repo String
+     * @return array
+     */
+    public function fetchRepoReleasesFromGit($owner, $repo)
+    {
+        $url = "https://api.github.com/repos/$owner/$repo/releases";
+
+        /*
+         * See the docs here https://developer.github.com/v3/repos/releases/
+         * for more info on the json returned.
+         */
+        $gitResponse = $this->curlGitRequest($url);
+
+        if (array_key_exists('message', $gitResponse)) {
+            return array('success' => false, 'message' => $gitResponse['message']);
+        }
+
+        $releases = array();
+        foreach ($gitResponse as $release) {
+            $releases[] = [
+                'name' => $release['name'],
+                'tag' => $release['tag_name'],
+                'branch' => $release['target_commitish'],
+                'source' => $release['zipball_url']
+            ];
+        }
+
+        return array('success' => true, 'releases' => $releases);
     }
 
     /**
