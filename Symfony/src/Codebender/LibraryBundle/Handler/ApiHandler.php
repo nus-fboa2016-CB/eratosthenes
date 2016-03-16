@@ -47,6 +47,7 @@ class ApiHandler
      * @param $defaultHeader
      * @param $version
      * @return string
+     * TODO: consider changing name into getLibraryPath
      */
     public function getExternalLibraryPath($defaultHeader, $version)
     {
@@ -57,7 +58,7 @@ class ApiHandler
 
         $versions = $library->getVersions();
         $version = $versions->filter(
-            function ($ver) use ($version) {
+            function (Version $ver) use ($version) {
                 return $ver->getVersion() === $version;
             },
             $versions
@@ -68,13 +69,8 @@ class ApiHandler
         return $path;
     }
 
-    public function getBuiltInLibraryPath($defaultHeader)
-    {
-        $builtInLibraryRoot = $this->container->getParameter('builtin_libraries');
-        $path = $builtInLibraryRoot . '/libraries/' . $defaultHeader;
-        return $path;
-    }
-
+    // TODO: rearrange filesystem to completely remove builtin_libraries parameter
+    // TODO: consider changing name into getArduinoExamplePath
     public function getBuiltInLibraryExamplePath($exmapleName)
     {
         $builtInLibraryRoot = $this->container->getParameter('builtin_libraries');
@@ -92,9 +88,7 @@ class ApiHandler
      */
     public function libraryVersionExists($defaultHeader, $version, $checkDisabled = false)
     {
-        if ($this->isValidExternalLibraryVersion($defaultHeader, $version, $checkDisabled)) {
-            return true;
-        } elseif ($this->isBuiltInLibrary($defaultHeader)) {
+        if ($this->isValidLibraryVersion($defaultHeader, $version, $checkDisabled)) {
             return true;
         } elseif ($this->isBuiltInLibraryExample($defaultHeader)) {
             return true;
@@ -102,6 +96,14 @@ class ApiHandler
 
         return false;
     }
+
+    public function isLibrary($defaultHeader, $getDisabled = false)
+    {
+        $library = $this->getLibraryFromDefaultHeader($defaultHeader);
+
+        return $getDisabled ? $library !== null : $library !== null && $library->getActive();
+    }
+
 
     /**
      * This method checks if the given built-in library exists (specified by
@@ -112,11 +114,12 @@ class ApiHandler
      */
     public function isBuiltInLibrary($defaultHeader)
     {
-        if (!is_dir($this->getBuiltInLibraryPath($defaultHeader))) {
+        $library = $this->getLibraryFromDefaultHeader($defaultHeader);
+
+        if ($library === null) {
             return false;
         }
-
-        return true;
+        return $library->isBuiltIn();
     }
 
     /**
@@ -125,6 +128,7 @@ class ApiHandler
      *
      * @param $defaultHeader
      * @return bool
+     * TODO: consider changing name into isArduinoExample
      */
     public function isBuiltInLibraryExample($defaultHeader)
     {
@@ -146,7 +150,10 @@ class ApiHandler
     {
         $library = $this->getLibraryFromDefaultHeader($defaultHeader);
 
-        return $getDisabled ? $library !== null : $library !== null && $library->getActive();
+        if ($library === null || $library->isBuiltIn()) {
+            return false;
+        }
+        return $getDisabled ? true : $library->getActive();
     }
 
     /**
@@ -171,8 +178,10 @@ class ApiHandler
     public function getAllVersionsFromDefaultHeader($defaultHeader)
     {
         $library = $this->getLibraryFromDefaultHeader($defaultHeader);
-        $versionObjects = $library->getVersions();
-        return $versionObjects;
+        if ($library === null) {
+            return new ArrayCollection();
+        }
+        return $library->getVersions();
     }
 
     /**
@@ -188,7 +197,7 @@ class ApiHandler
 
         // check if this library contains requested version
         $result = $versionCollection->filter(
-            function ($versionObject) use ($version) {
+            function (Version $versionObject) use ($version) {
                 return $versionObject->getVersion() === $version;
             }
         );
@@ -201,11 +210,26 @@ class ApiHandler
     }
 
     /**
+     * Get the Version entity for the given version id
+     * @param $versionId
+     * @return Version
+     */
+    public function getVersionFromId($versionId)
+    {
+        $version = $this->entityManager
+            ->getRepository('CodebenderLibraryBundle:Version')
+            ->findOneBy(array('id' => $versionId));
+
+        return $version;
+    }
+
+    /**
      * Get LibraryExample entity for the requested library example
      * @param $library
      * @param $version
      * @param $example
      * @return array
+     * TODO: consider changing name into getExampleForLibrary
      */
     public function getExampleForExternalLibrary($library, $version, $example)
     {
@@ -219,7 +243,7 @@ class ApiHandler
         $examplenMeta = array_values(
             array_filter(
                 $versionMeta->getLibraryExamples()->toArray(),
-                function ($exampleObject) use ($example) {
+                function (LibraryExample $exampleObject) use ($example) {
                     return $exampleObject->getName() === $example;
                 }
             )
@@ -265,7 +289,7 @@ class ApiHandler
     public function isLibraryInSyncWithGit($gitOwner, $gitRepo, $gitBranch, $gitInRepoPath, $gitLastCommit)
     {
         /*
-         * The values below are fetched fromt the database of the application. If any of them is not set
+         * The values below are fetched it the database of the application. If any of them is not set
          * in the database, the default (null) value will be returned.
          */
         if ($gitOwner === null || $gitRepo === null || $gitBranch === null || $gitLastCommit === null) {
@@ -393,9 +417,9 @@ class ApiHandler
      * @param bool $checkDisabled
      * @return bool
      */
-    private function isValidExternalLibraryVersion($defaultHeader, $version, $checkDisabled = false)
+    private function isValidLibraryVersion($defaultHeader, $version, $checkDisabled = false)
     {
-        if (!$this->isExternalLibrary($defaultHeader, $checkDisabled)) {
+        if (!$this->isLibrary($defaultHeader, $checkDisabled)) {
             return false;
         }
 
