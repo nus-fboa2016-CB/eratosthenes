@@ -114,16 +114,7 @@ class NewLibraryHandler
         if (!$creationResponse['success']) {
             return array('success' => false, 'message' => $creationResponse['message']);
         }
-
-        $lib = $creationResponse["lib"];
-        $version = $creationResponse["version"];
-
-        $this->saveEntities([$version, $lib]);
-        $this->saveExamples($data, $lib, $version);
-
-        // flush all changes if nothing goes wrong
-        $this->entityManager->flush();
-
+        
         return array('success' => true);
     }
 
@@ -219,8 +210,6 @@ class NewLibraryHandler
             return $create;
         }
 
-//        $this->saveEntities(array($lib));
-
         return ["success" => true, "lib" => $lib];
     }
 
@@ -257,11 +246,15 @@ class NewLibraryHandler
         }
 
         $this->saveEntities(array($lib, $version));
-        $this->saveArchitecturesForVersion($version, $data['Architectures']);
-        $this->saveExamples($data, $lib, $version);
+
+        // save latest version for lib
         if ($data['IsLatestVersion']) {
             $lib->setLatestVersion($version);
         }
+        $this->saveEntities(array($lib));
+
+        $this->saveArchitecturesForVersion($version, $data['Architectures']);
+        $this->saveExamples($data, $lib, $version);
 
         return ["success" => true, "lib" => $lib, "version" => $version];
     }
@@ -443,6 +436,7 @@ class NewLibraryHandler
         foreach ($entities as $entity) {
             $this->entityManager->persist($entity);
         }
+        $this->entityManager->flush();
     }
 
     private function editEntity($lib)
