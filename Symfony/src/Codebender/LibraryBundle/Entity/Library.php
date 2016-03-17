@@ -130,7 +130,7 @@ class Library
      * @var integer
      *
      * @ORM\OneToOne(targetEntity="Version")
-     * @ORM\JoinColumn(name="latest_version_id", referencedColumnName="id", nullable = true)
+     * @ORM\JoinColumn(name="latest_version_id", referencedColumnName="id", nullable = false)
      */
     private $latest_version;
 
